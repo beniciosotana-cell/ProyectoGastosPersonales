@@ -1,84 +1,46 @@
 ﻿using System;
-using System.Collections.Generic;
+using Microsoft.Data.Sqlite;
 
 namespace ProyectoGastosPersonales
 {
-    // ==========================================
-    // 1. CLASE BASE (Abstracción y Encapsulación)
-    // ==========================================
-    public abstract class TransaccionBase
-    {
-        private int _id;
-        private string _descripcion = string.Empty; // Soluciona CS8618 inicializándolo por defecto
-
-        public int Id
-        {
-            get { return _id; }
-            set { _id = value; }
-        }
-
-        public string Descripcion
-        {
-            get { return _descripcion; }
-            set
-            {
-                if (string.IsNullOrWhiteSpace(value))
-                    throw new ArgumentException("La descripción no puede estar vacía.");
-                _descripcion = value;
-            }
-        }
-
-        public abstract void MostrarDetalle();
-    }
-
-    // ==========================================
-    // 2. CLASE DERIVADA (Herencia)
-    // ==========================================
-    public class Gasto : TransaccionBase
-    {
-        private decimal _monto;
-
-        public decimal Monto
-        {
-            get { return _monto; }
-            set
-            {
-                if (value <= 0)
-                    throw new ArgumentException("El monto debe ser mayor a cero.");
-                _monto = value;
-            }
-        }
-
-        // Polimorfismo: Sobrescribiendo el método abstracto
-        public override void MostrarDetalle()
-        {
-            Console.WriteLine($"ID: {Id} | Gasto: {Descripcion} | Monto: ${Monto}");
-        }
-    }
-
-    // ==========================================
-    // 3. CLASE PRINCIPAL Y LÓGICA DEL SISTEMA
-    // ==========================================
     class Program
     {
-        static List<Gasto> listaGastos = new List<Gasto>();
-        static int contadorId = 1;
+        private static string cadenaConexion = "Data Source=gastos.db";
 
         static void Main(string[] args)
+        //[span_10](start_span)[span_10](end_span)
         {
-            bool salir = false;
+            InicializarBaseDatos();
 
+            // 1. Pantalla de Bienvenida y Personalización inicial
+            Console.Clear();
+            Console.WriteLine("=== BIENVENIDO AL SISTEMA DE GASTOS PERSONALES ===");
+            Console.Write("¿Cuál es tu nombre?: ");
+            string nombreUsuario = Console.ReadLine() ?? "Usuario";
+
+            Console.Write("¿A qué te dedicas (Ocupación)?: ");
+            string ocupacionUsuario = Console.ReadLine() ?? "No especificada";
+
+            Console.Write("¿Cómo percibes tus gastos actualmente (Trabajo, beca, etc.)?: ");
+            string fuenteIngresos = Console.ReadLine() ?? "General";
+
+            Console.WriteLine($"\n¡Hola, {nombreUsuario} ({ocupacionUsuario})! Tus ingresos provienen de: {fuenteIngresos}.");
+            Console.WriteLine("Presiona cualquier tecla para ir al menú principal...");
+            Console.ReadKey();
+
+            bool salir = false;
             while (!salir)
             {
                 Console.Clear();
-                Console.WriteLine("=== CONTROL DE GASTOS PERSONALES ===");
-                Console.WriteLine("1. Registrar nuevo gasto");
-                Console.WriteLine("2. Ver lista de gastos");
+                Console.WriteLine($"=== CONTROL DE GASTOS: {nombreUsuario.ToUpper()} ===");
+                Console.WriteLine("1. Registrar nuevo gasto (Crear)");
+                Console.WriteLine("2. Ver lista de gastos (Leer)");
                 Console.WriteLine("3. Ver total gastado");
-                Console.WriteLine("4. Salir");
+                Console.WriteLine("4. Actualizar un gasto (Actualizar)");
+                Console.WriteLine("5. Eliminar un gasto (Borrar)");
+                Console.WriteLine("6. Salir");
                 Console.Write("Seleccione una opción: ");
 
-                // Soluciona CS8600 y CS8601 asegurando que si es nulo use un texto vacío
                 string opcion = Console.ReadLine() ?? string.Empty;
 
                 try
@@ -95,11 +57,17 @@ namespace ProyectoGastosPersonales
                             VerTotal();
                             break;
                         case "4":
+                            ActualizarGasto();
+                            break;
+                        case "5":
+                            EliminarGasto();
+                            break;
+                        case "6":
                             salir = true;
-                            Console.WriteLine("¡Saliendo del programa. Mucho éxito con tu presentación!");
+                            Console.WriteLine("\n¡Saliendo del programa!");
                             break;
                         default:
-                            Console.WriteLine("Opción no válida. Intente nuevamente.");
+                            Console.WriteLine("\nOpción no válida. Intente nuevamente.");
                             break;
                     }
                 }
@@ -118,13 +86,29 @@ namespace ProyectoGastosPersonales
             }
         }
 
-        static void RegistrarGasto()
+        private static void InicializarBaseDatos()
+        {
+            using (var conexion = new SqliteConnection(cadenaConexion))
+            {
+                conexion.Open();
+                string comandoSql = @"
+                    CREATE TABLE IF NOT EXISTS Gastos (
+                        Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        Descripcion TEXT NOT NULL,
+                        Monto REAL NOT NULL
+                    );";
+                using (var comando = new SqliteCommand(comandoSql, conexion))
+                {
+                    comando.ExecuteNonQuery();
+                }
+            }
+        }
+
+        private static void RegistrarGasto()
         {
             Console.Clear();
             Console.WriteLine("--- REGISTRAR NUEVO GASTO ---");
-
-            Console.Write("¿En qué gastaste? (Ej. Comida, Salida, Ropa): ");
-            // Soluciona CS8600 para la entrada por consola
+            Console.Write("¿En qué gastaste? (Ej. Comida, Ropa): ");
             string descripcion = Console.ReadLine() ?? string.Empty;
 
             Console.Write("Ingrese el monto: ");
@@ -135,47 +119,170 @@ namespace ProyectoGastosPersonales
                 throw new FormatException("Debe ingresar un número válido para el monto.");
             }
 
-            Gasto nuevoGasto = new Gasto();
-            nuevoGasto.Id = contadorId++;
-            nuevoGasto.Descripcion = descripcion;
-            nuevoGasto.Monto = monto;
+            // Validamos mediante la clase asegurando POO
+            Gasto nuevoGasto = new Gasto
+            {
+                Descripcion = descripcion,
+                Monto = monto
+            };
 
-            listaGastos.Add(nuevoGasto);
+            using (var conexion = new SqliteConnection(cadenaConexion))
+            {
+                conexion.Open();
+                string query = "INSERT INTO Gastos (Descripcion, Monto) VALUES (@desc, @monto)";
+                using (var cmd = new SqliteCommand(query, conexion))
+                {
+                    cmd.Parameters.AddWithValue("@desc", nuevoGasto.Descripcion);
+                    cmd.Parameters.AddWithValue("@monto", nuevoGasto.Monto);
+                    cmd.ExecuteNonQuery();
+                }
+            }
 
             Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine("\n¡Gasto registrado con éxito!");
+            Console.WriteLine("\n¡Gasto registrado con éxito en la base de datos!");
             Console.ResetColor();
         }
 
-        static void ListarGastos()
+        private static void ListarGastos()
         {
             Console.Clear();
             Console.WriteLine("--- LISTA DE GASTOS ---");
 
-            if (listaGastos.Count == 0)
+            bool hayRegistros = false;
+            using (var conexion = new SqliteConnection(cadenaConexion))
             {
-                Console.WriteLine("No hay gastos registrados todavía.");
-                return;
+                conexion.Open();
+                string query = "SELECT Id, Descripcion, Monto FROM Gastos";
+                using (var cmd = new SqliteCommand(query, conexion))
+                {
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            hayRegistros = true;
+                            Gasto gasto = new Gasto
+                            {
+                                Id = reader.GetInt32(0),
+                                Descripcion = reader.GetString(1),
+                                Monto = reader.GetDecimal(2)
+                            };
+                            gasto.MostrarDetalle(); // Polimorfismo en acción
+                        }
+                    }
+                }
             }
 
-            foreach (var gasto in listaGastos)
+            if (!hayRegistros)
             {
-                gasto.MostrarDetalle();
+                Console.WriteLine("No hay gastos registrados todavía.");
             }
         }
 
-        static void VerTotal()
+        private static void VerTotal()
         {
             Console.Clear();
             Console.WriteLine("--- TOTAL GASTADO ---");
-
             decimal total = 0;
-            foreach (var gasto in listaGastos)
+
+            using (var conexion = new SqliteConnection(cadenaConexion))
             {
-                total += gasto.Monto;
+                conexion.Open();
+                string query = "SELECT SUM(Monto) FROM Gastos";
+                using (var cmd = new SqliteCommand(query, conexion))
+                {
+                    var resultado = cmd.ExecuteScalar();
+                    if (resultado != DBNull.Value && resultado != null)
+                    {
+                        total = Convert.ToDecimal(resultado);
+                    }
+                }
             }
 
             Console.WriteLine($"Llevas gastando un total de: ${total}");
+        }
+
+        private static void ActualizarGasto()
+        {
+            Console.Clear();
+            Console.WriteLine("--- ACTUALIZAR GASTO ---");
+            ListarGastos();
+
+            Console.Write("\nIngrese el ID del gasto que desea modificar: ");
+            if (!int.TryParse(Console.ReadLine(), out int id))
+            {
+                throw new FormatException("ID inválido.");
+            }
+
+            Console.Write("Nueva descripción: ");
+            string nuevaDesc = Console.ReadLine() ?? string.Empty;
+
+            Console.Write("Nuevo monto: ");
+            if (!decimal.TryParse(Console.ReadLine(), out decimal nuevoMonto))
+            {
+                throw new FormatException("Monto inválido.");
+            }
+
+            // Aplicamos validación de POO
+            Gasto gastoTemp = new Gasto { Descripcion = nuevaDesc, Monto = nuevoMonto };
+
+            using (var conexion = new SqliteConnection(cadenaConexion))
+            {
+                conexion.Open();
+                string query = "UPDATE Gastos SET Descripcion = @desc, Monto = @monto WHERE Id = @id";
+                using (var cmd = new SqliteCommand(query, conexion))
+                {
+                    cmd.Parameters.AddWithValue("@desc", gastoTemp.Descripcion);
+                    cmd.Parameters.AddWithValue("@monto", gastoTemp.Monto);
+                    cmd.Parameters.AddWithValue("@id", id);
+                    int filasAfectadas = cmd.ExecuteNonQuery();
+
+                    if (filasAfectadas > 0)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Green;
+                        Console.WriteLine("\n¡Gasto actualizado correctamente!");
+                        Console.ResetColor();
+                    }
+                    else
+                    {
+                        Console.WriteLine("\nNo se encontró un gasto con ese ID.");
+                    }
+                }
+            }
+        }
+
+        private static void EliminarGasto()
+        {
+            Console.Clear();
+            Console.WriteLine("--- ELIMINAR GASTO ---");
+            ListarGastos();
+
+            Console.Write("\nIngrese el ID del gasto que desea eliminar: ");
+            if (!int.TryParse(Console.ReadLine(), out int id))
+            {
+                throw new FormatException("ID inválido.");
+            }
+
+            using (var conexion = new SqliteConnection(cadenaConexion))
+            {
+                conexion.Open();
+                string query = "DELETE FROM Gastos WHERE Id = @id";
+                using (var cmd = new SqliteCommand(query, conexion))
+                {
+                    cmd.Parameters.AddWithValue("@id", id);
+                    int filasAfectadas = cmd.ExecuteNonQuery();
+
+                    if (filasAfectadas > 0)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Green;
+                        Console.WriteLine("\n¡Gasto eliminado correctamente!");
+                        Console.ResetColor();
+                    }
+                    else
+                    {
+                        Console.WriteLine("\nNo se encontró un gasto con ese ID.");
+                    }
+                }
+            }
         }
     }
 }
